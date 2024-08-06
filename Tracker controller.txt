@@ -1,0 +1,91 @@
+Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser
+clear
+
+$port = new-Object System.IO.Ports.SerialPort COM4,9600,None,8,one
+$port.ReadTimeout = 60000
+$port.Open()
+$port.DiscardInBuffer()
+Write-Host 'COM port open...'
+
+$CurrentTilt = 0
+$CurrentAzimuth = 0
+$RelativeTilt
+$RelativeAzimuth
+
+# Define the elevation and azimuth steps
+$elevation_steps = 0
+$azimuth_steps_forward = 0, 30, 60, 90
+
+
+#$elevation_steps = 0, 15, 30, 45, 60, 90
+#$azimuth_steps_forward = 0, 30, 45, 60, 90, 120, 150, 180, 225, 240, 270, 300, 330, 360
+#$azimuth_steps_backward = 360, 330, 300, 270, 240, 225, 180, 150, 120, 90, 60, 45, 30, 0
+
+# Create an array to hold all the data
+$data = @()
+
+foreach ($elevation in $elevation_steps) {
+    $currentDate = Get-Date -Format "yyyy-MM-dd"
+    $currentTime = Get-Date -Format "HH:mm:ss"
+    if ($elevation -eq 90) {
+        Write-Host "$currentDate $currentTime - Setting Elevation to 90 degrees"
+        $port.WriteLine("SETUP-TILT")
+        Start-Sleep -s 3
+        $RelativeTilt= $elevation - $CurrentTilt
+        $port.WriteLine("$RelativeTilt")
+        Start-Sleep -s 3
+        $CurrentTilt = $elevation
+    } else {
+        Write-Host "$currentDate $currentTime - Setting Elevation to $elevation degrees"
+        $port.WriteLine("SETUP-TILT")
+        Start-Sleep -s 3
+        $RelativeTilt= $elevation - $CurrentTilt
+        $port.WriteLine("$RelativeTilt")
+        Start-Sleep -s 3
+        $CurrentTilt = $elevation
+
+        if ($elevation -eq 0 -or $elevation -eq 30 -or $elevation -eq 60) {
+            $azimuth_steps = $azimuth_steps_forward
+        } elseif ($elevation -eq 15 -or $elevation -eq 45) {
+            $azimuth_steps = $azimuth_steps_backward
+        }
+
+        foreach ($azimuth in $azimuth_steps) {
+            $currentDate = Get-Date -Format "yyyy-MM-dd"
+            $currentTime = Get-Date -Format "HH:mm:ss"
+            Write-Host "$currentDate $currentTime - Setting Azimuth to $azimuth degrees at Elevation $elevation"
+            $port.WriteLine("SETUP-AZ")
+            Start-Sleep -s 3
+            $RelativeAzimuth= $azimuth - $CurrentAzimuth
+            $port.WriteLine("$RelativeAzimuth")
+            Start-Sleep -s 3
+            $CurrentAzimuth = $azimuth
+
+            # Simulate reading the irradiance value from the microcontroller
+            $currentDate = Get-Date -Format "yyyy-MM-dd"
+            $currentTime = Get-Date -Format "HH:mm:ss"
+            $port.DiscardInBuffer()
+            $port.WriteLine("MEASURE")
+            Start-Sleep -s 1
+            $irradiance = $port.ReadLine()
+            Write-Host "$currentDate $currentTime - Measuring irradiance: $irradiance W/m^2"
+
+            # Store the data
+            $data += [PSCustomObject]@{
+                Date = $currentDate
+                Time = $currentTime
+                Azimuth = $azimuth
+                Tilt = $elevation
+                Irradiance = $irradiance
+            }
+        }
+    }
+}
+
+# Export data to a CSV file
+$data | Export-Csv -Path "C:\Users\Amir Darabi\Desktop\Measurements\file.csv" -NoTypeInformation
+Write-Host "Data export complete."
+
+$port.Close()
+Write-Host 'COM port closed...'
+Write-Host 'Session terminated...'
